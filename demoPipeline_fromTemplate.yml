@@ -1,0 +1,70 @@
+trigger:
+- Dev
+pool:
+  vmImage: 'ubuntu-20.04'
+variables:
+  - name: majorVersion
+    value: 1
+  - name: minorVersion
+    value: 0
+  - group: SSH-Vars
+  - group: Dev-vars
+  - name: devManFoundationPlanOutputFile
+    value: devMan-AzDev
+
+# Define the Resources to be used in this pipeline. Here, we are consuming pipeline templates from a separate Repo`.
+resources:
+  repositories:
+    - repository: tfTemplates                                    # Name to assign to this resource within this pipeline.
+      type: git                                                  # Repository type. Azure DevOps would be 'git'.
+      name: 'AzureInfrastructure/azuredevops-pipeline-templates' # <AzureDevOpsProjectName>/<repo>
+
+# Majority of the input parameters here are variables that are found in the variable groups above...
+## Variables can either be standalone, or part of a variable group (Library) within Azure DevOps.
+## Variable groups can gather secure Vars from KeyVault. Only users/SPNs with `Secrets User` rights can access,
+name: $(majorVersion).$(minorversion).$(Rev:r)
+stages:
+- template: az-infrastructure/terraform-planCLI.yml@tfTemplates  # path to pipeline template yml file @ defined resource.
+  parameters:
+    dependsOn: []
+    environment: 'Dev'
+    deploymentName: 'AzureDevDeploymentDemo'
+    terraformVersion: 'latest'
+    workingDirectory: 'tf-deploy'
+    artifactSuffix: $(Build.BuildNumber)
+    knownHosts: $(knownHosts)
+    sshPublicKey: $(sshPublicKey)
+    sshPassphrase: $(cicd_user_ssh-pass)
+    sshSecureFile: 'ssh-key'
+    sp_client_id: $(dev-SPN-id)
+    sp_client_secret: $(dev-spn-secret)
+    subscription_id: $(Dev-SubscriptionID)
+    tenant_id: $(TenantID)
+    terraformConfigPath: tf-deploy
+    tfvarsPath: ../environments/Dev/environment.tfvars
+    backendPath: ../environments/Dev/backend.tf
+    buildType: current
+    downloadType: single
+    downloadPath: '$(System.ArtifactsDirectory)'
+
+# Terraform Apply stage.
+
+# Terraform apply is carried out using an Azure DevOps Deployment task. 
+# Azure DevOps environment can have policies assigned to secure this deployment and require approvals etc.
+- template: az-infrastructure/terraform-deployCLI.yml@tfTemplates
+  parameters:
+    dependsOn: []
+    deploymentName:
+    environment: 'Dev' 
+    terraformVersion: 'latest'
+    artifactSuffix: $(Build.BuildNumber)
+    sp_client_id: $(dev-SPN-id)
+    sp_client_secret: $(dev-spn-secret)
+    subscription_id: $(Dev-SubscriptionID)
+    tenant_id: $(TenantID)
+    terraformConfigPath: tf-deploy
+    tfvarsPath: ../environments/Dev/environment.tfvars
+    backendPath: ../environments/Dev/backend.tf   # Terraform backend config file is located in the Terraform configuration repo'.
+    buildType: current
+    downloadType: single
+    downloadPath: '$(System.ArtifactsDirectory)'
